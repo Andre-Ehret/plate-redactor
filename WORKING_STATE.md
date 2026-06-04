@@ -2,15 +2,21 @@
 
 Living snapshot of where the project is. Update this after each unit of work.
 
-_Last updated: 2026-06-04 — Phase 2 scaffolding complete (training not yet run on GPU)._
+_Last updated: 2026-06-04 — Phase 2 complete (trained checkpoint produced on Kaggle T4)._
 
 ## Current phase
 
-**Phase 2 — Train detector → scripts + notebook ready; GPU run pending.** The
-training pipeline is written and locally validated (argument parsing, notebook
-JSON, byte-compile). The actual ~100-epoch train must run on Kaggle/Colab GPU to
-produce `models/best.pt`; record which platform produced the released checkpoint
-here once done. Next up after that: Phase 3 (recall-focused evaluation).
+**Phase 2 — Train detector → DONE.** YOLOv8n trained 100 epochs on the synthetic
+dataset; `models/best.pt` (6.2 MB) produced. DoD met. **Next up: Phase 3**
+(recall-focused evaluation against real photos — see the caveat below).
+
+> **Caveat — synthetic val is saturated.** Val recall/precision came out at
+> 1.00 / 1.00 (mAP@0.5 0.995). That's a red flag, not a victory: the synthetic
+> val split is too close to the train distribution, so these numbers overstate
+> real-world performance. Phase 3 (real, consenting photos) is where we find the
+> true recall; if the gap is large we likely need to harden the generator
+> (more variance/difficulty) and/or a small real fine-tune set (see Open
+> decisions: synthetic-vs-real share).
 
 ## Phase status
 
@@ -18,7 +24,7 @@ here once done. Next up after that: Phase 3 (recall-focused evaluation).
 |---|---|---|
 | 0 | Repo setup (structure, license, README contract) | ✅ Done |
 | 1 | Synthetic data generator (DE-plate compositing + augmentation, image + bbox labels) | ✅ Done |
-| 2 | Train compact single-class detector | 🟡 Scaffolded (GPU run pending) |
+| 2 | Train compact single-class detector | ✅ Done (Kaggle T4; recall 1.00 on synthetic val — see caveat) |
 | 3 | Evaluation (recall-focused; skewed/dirty/occluded/shadow) | ⬜ Not started |
 | 4 | TFLite export + quantisation | ⬜ Not started |
 | 5 | Integration contract test | ⬜ Not started |
@@ -86,9 +92,18 @@ here once done. Next up after that: Phase 3 (recall-focused evaluation).
   rotation guidance (§4).
 - `pyproject.toml` — added `[train]` extra (`ultralytics>=8.1`); kept out of base
   install (pulls torch). `.gitignore` — added `.ipynb_checkpoints/`.
-- Local validation: both scripts byte-compile and `--help` cleanly; notebook is
-  valid JSON. **Not yet run on GPU** — `models/best.pt`, recall ≥ 0.80, and the
-  loss-curve / sanity-check DoD items require a Kaggle/Colab run.
+- **GPU run (released checkpoint):** Kaggle, **Tesla T4**, 100 epochs in 0.68 h,
+  imgsz 320, batch 16, seed 0, 5 000 synthetic images (fallback backgrounds).
+  Result: **recall 1.00, precision 1.00, mAP@0.5 0.995, mAP@.5:.95 0.995** on the
+  synthetic val split (500 imgs). `best.pt` = 6.2 MB, 3.0 M params, 8.1 GFLOPs.
+  Sanity check: 5/5 images, confidence 0.96–0.98. **Treat the perfect metrics as
+  saturation, not real-world performance** (see caveat at top).
+- Bug found + fixed during the run: `resolve_data_yaml()` doubled the dataset path
+  for relative `path:` (Ultralytics "images not found"); now uses the yaml's own
+  dir. Notebook clone cell hardened to force-update to latest `main`. Both pushed.
+- Note: the released run used **synthetic fallback backgrounds** (solid colours),
+  not real vehicle photos — another reason the val is easy. For a stronger model,
+  re-run with real backgrounds (`--backgrounds` / attached Kaggle dataset).
 
 ### Decisions made in Phase 2
 
