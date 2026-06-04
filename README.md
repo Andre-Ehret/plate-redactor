@@ -11,8 +11,10 @@ This is a **detector, not OCR** — for redaction only *where* a plate is matter
 not *what it says*. Detection is also more robust on skewed, dirty or partly
 occluded plates where OCR fails, and the plate text is never read or stored.
 
-**Status: Phase 0 (repo setup).** Nothing is trained yet. This repo currently
-only defines the project structure and the interface contract below.
+**Status: Phase 1 (synthetic data generator).** Nothing is trained yet, but the
+generator that produces the training data is in place — see
+[Synthetic data generator](#synthetic-data-generator) below. This repo defines
+the project structure, the interface contract, and the data pipeline.
 
 ---
 
@@ -114,12 +116,21 @@ the noted phase.
 ## Project structure
 
 ```
-src/        # generator, training, export (Phases 1–4)
-data/       # gitignored — synthetic images & labels
-models/     # gitignored — checkpoints, .tflite artefacts
-tests/      # contract tests (Phase 5)
+src/plate_redactor/
+  generator/        # Phase 1 — synthetic data generator
+    plate.py        #   render a DE-format plate (RGBA)
+    backgrounds.py  #   background pool (disk or synthetic fallback)
+    compositor.py   #   paste plate onto background, record bbox
+    augment.py      #   augmentation pipeline (AugmentConfig)
+    writer.py       #   YOLO label + dataset-layout writer
+    generate.py     #   CLI entry point
+    fonts.py        #   font resolution (no font binary committed)
+data/               # gitignored — synthetic images & labels, backgrounds
+models/             # gitignored — checkpoints, .tflite artefacts
+tests/              # generator smoke test (Phase 1); contract tests (Phase 5)
 README.md
-LICENSE     # Apache 2.0
+LICENSE             # Apache 2.0
+NOTICE              # font licensing rationale
 pyproject.toml
 .gitignore
 ```
@@ -152,9 +163,80 @@ Smoke test:
 python -c "import plate_redactor; print(plate_redactor.__version__)"
 ```
 
-Baseline dependencies (`numpy`, `pillow`, `opencv-python`) cover the synthetic
-data generator (Phase 1). Training and TFLite-export dependencies are added in
-later phases to keep the base install light.
+Baseline dependencies (`numpy`, `pillow`, `opencv-python`, `tqdm`) cover the
+synthetic data generator (Phase 1). Training and TFLite-export dependencies are
+added in later phases to keep the base install light.
+
+---
+
+## Synthetic data generator
+
+Composites artificial **German (DE-format)** licence plates onto background
+images and writes image + bounding-box label pairs ready for training. **No real
+plate photos are ever used** (see [Data provenance](#data-provenance-gdpr)).
+
+```bash
+# 5000 images from your own backgrounds, reproducible via --seed
+python -m plate_redactor.generator.generate \
+    --n 5000 --seed 42 --backgrounds data/backgrounds --out data/synthetic
+
+# installed console-script alias (same thing)
+plate-redactor-generate --n 5000 --seed 42 --backgrounds data/backgrounds
+
+# no backgrounds → synthesised solid-colour fallbacks (quick smoke run)
+python -m plate_redactor.generator.generate --n 50 --seed 42
+```
+
+> The generator lives in the `plate_redactor.generator` package (the project's
+> `src/`-layout package), so the module path is
+> `python -m plate_redactor.generator.generate`.
+
+**Flags:** `--n` (image count), `--seed` (global seed), `--backgrounds` (image
+dir; omit for fallbacks), `--out` (default `data/synthetic`), `--val-split`
+(default `0.1`), `--font` (path to a plate font — see [Fonts](#fonts)).
+
+### Output layout (YOLO format)
+
+```
+data/synthetic/
+  images/train/  images/val/
+  labels/train/  labels/val/
+  data.yaml
+```
+
+Each image has a one-line label `0 <cx> <cy> <w> <h>` — class `0` (`plate`),
+**centre** coordinates normalised `0–1`. (The runtime interface contract above
+uses top-left `[x, y, w, h]`; the compositor records that form and the label
+writer converts to YOLO centre form.) `data.yaml` is the standard YOLO dataset
+descriptor.
+
+### Augmentations
+
+Each is independently toggled and seeded for reproducibility (see
+`AugmentConfig`): perspective/rotation (±20° tilt + mild keystone), brightness/
+contrast, partial shadow, Gaussian blur, dirt/salt-and-pepper noise, partial
+occlusion (≤40 % of the plate — the box is kept so the detector must still fire),
+and scale variation (plate occupies 2 %–30 % of the image area).
+
+### Backgrounds
+
+Supply a directory via `--backgrounds`; subfolders are searched. Backgrounds are
+**never committed** (`data/` is git-ignored). Source freely-licensed vehicle /
+street / parking-lot photos from e.g. [Unsplash](https://unsplash.com),
+[Pexels](https://pexels.com), or CC0 Flickr (queries like `"car street"`,
+`"parking lot"`). Mix portrait and landscape. With no directory, the generator
+synthesises solid-colour backgrounds in both orientations so it runs with zero
+setup (real photos make a far better detector).
+
+### Fonts
+
+To keep the public repo clean of murky-licensed binaries, **no plate font is
+bundled**. The renderer resolves a font at runtime (explicit `--font` →
+`PLATE_REDACTOR_FONT` → `generator/assets/fonts/*.ttf` → a common system font →
+Pillow's built-in default). Glyph fidelity is irrelevant to a *detector*; for
+authentic-looking plates drop a licensed FE-Schrift into
+`src/plate_redactor/generator/assets/fonts/` (git-ignored) or pass `--font`. See
+[`NOTICE`](NOTICE) for the full rationale and licensing notes.
 
 ---
 
@@ -162,10 +244,11 @@ later phases to keep the base install light.
 
 One phase per work order; test briefly after each.
 
-- **Phase 0 — Repo setup** *(this phase)*: structure, Apache-2.0 license, README
-  with the interface contract.
-- **Phase 1 — Synthetic data generator**: DE-plate compositing + augmentation;
-  writes images **and** bounding-box labels.
+- **Phase 0 — Repo setup**: structure, Apache-2.0 license, README with the
+  interface contract.
+- **Phase 1 — Synthetic data generator** *(this phase)*: DE-plate compositing +
+  augmentation; writes images **and** bounding-box labels. See
+  [Synthetic data generator](#synthetic-data-generator).
 - **Phase 2 — Train the detector**: compact single-class architecture.
 - **Phase 3 — Evaluation**: recall-focused; skewed / dirty / occluded / shadow
   test cases; over-redaction preferred.

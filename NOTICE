@@ -1,0 +1,34 @@
+plate-redactor
+Copyright the plate-redactor contributors.
+
+This product includes software developed as part of the plate-redactor project,
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+------------------------------------------------------------------------------
+Fonts
+------------------------------------------------------------------------------
+
+The synthetic plate renderer does NOT bundle a licence-plate font. This is
+deliberate: the freely-circulating digitisations of the German FE-Schrift (the
+official "fälschungserschwerende Schrift" defined in Anlage 4 of the
+Fahrzeug-Zulassungsverordnung) have unclear or non-permissive redistribution
+terms, which conflicts with this project's clean-provenance stance. Because this
+is a *detector* (it learns only *where* a plate is, not how to read it), exact
+glyph fidelity does not affect the result.
+
+At runtime the renderer resolves a font in this order (see
+src/plate_redactor/generator/fonts.py):
+
+  1. an explicit path passed via `--font`
+  2. the PLATE_REDACTOR_FONT environment variable
+  3. any .ttf/.otf placed in src/plate_redactor/generator/assets/fonts/
+     (git-ignored; this is where you may drop a real FE-Schrift you are
+     licensed to use)
+  4. a commonly-installed system font (DejaVu / Liberation / Arial / Helvetica),
+     used at runtime only and never redistributed by this project
+  5. Pillow's built-in scalable default font (permissively licensed; ships with
+     the Pillow dependency) as a guaranteed fallback
+
+If you add an FE-Schrift or other plate font under assets/fonts/, record its
+source and licence here, and confirm you are permitted to use (and, if you
+publish the dataset, redistribute) it.

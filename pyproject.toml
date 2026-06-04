@@ -17,14 +17,18 @@ keywords = ["license-plate", "object-detection", "privacy", "gdpr", "tflite", "o
 # install light and portable (see README "Build phases").
 dependencies = [
     "numpy>=1.24",
-    "pillow>=10.0",
+    "pillow>=10.1",
     "opencv-python>=4.8",
+    "tqdm>=4.65",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
 ]
+
+[project.scripts]
+plate-redactor-generate = "plate_redactor.generator.generate:main"
 
 [project.urls]
 Homepage = "https://github.com/andrenalin/plate-redactor"
