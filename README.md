@@ -103,8 +103,8 @@ the noted phase.
 | Decision | Status |
 |---|---|
 | Final repo / model name | **TBD** |
-| Detector architecture (compact single-class) | **TBD** (Phase 2) |
-| Input resolution — `320` vs `416` | **TBD** |
+| Detector architecture (compact single-class) | **YOLOv8n** (Ultralytics, Apache-2.0) — Phase 2 |
+| Input resolution — `320` vs `416` | **320** (working choice, Phase 2; revisit 416 in Phase 3 if recall lags) |
 | Quantisation — `int8` vs `fp16` | **TBD** (Phase 4) |
 | NMS location — in-model vs post-processing | **TBD** (Phase 4) |
 | Recall threshold / acceptance metric | **TBD** (Phase 3) |
@@ -125,6 +125,12 @@ src/plate_redactor/
     writer.py       #   YOLO label + dataset-layout writer
     generate.py     #   CLI entry point
     fonts.py        #   font resolution (no font binary committed)
+src/training/       # Phase 2 — train / sanity-check the detector
+  train.py          #   train YOLOv8n -> models/best.pt
+  sanity_check.py   #   CPU inference on a few val images
+  README.md         #   architecture decision + hyperparameter notes
+notebooks/          # Phase 2 — Kaggle/Colab training notebook
+  train.ipynb
 data/               # gitignored — synthetic images & labels, backgrounds
 models/             # gitignored — checkpoints, .tflite artefacts
 tests/              # generator smoke test (Phase 1); contract tests (Phase 5)

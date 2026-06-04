@@ -31,6 +31,11 @@ dist/
 .coverage
 htmlcov/
 
+# --- Notebooks ---
+# Commit the .ipynb scripts themselves; ignore Jupyter's autosave checkpoints
+# and any executed run outputs (real checkpoints already covered by /models/*).
+.ipynb_checkpoints/
+
 # --- Virtual environments ---
 .venv/
 venv/

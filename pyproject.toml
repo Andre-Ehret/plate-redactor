@@ -26,6 +26,11 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+# Phase 2 — training. Kept out of the base install: ultralytics pulls torch,
+# which is large and platform-specific. Install with: pip install -e ".[train]"
+train = [
+    "ultralytics>=8.1",
+]
 
 [project.scripts]
 plate-redactor-generate = "plate_redactor.generator.generate:main"
