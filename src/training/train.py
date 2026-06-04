@@ -131,11 +131,13 @@ def resolve_data_yaml(data_path: str | Path) -> Path:
         )
 
     cfg = yaml.safe_load(data_path.read_text(encoding="utf-8")) or {}
-    base = Path(cfg.get("path", data_path.parent))
-    if not base.is_absolute():
-        # Relative paths in the yaml are relative to the yaml's own directory.
-        base = (data_path.parent / base).resolve()
-    cfg["path"] = str(base)
+    # The Phase-1 generator always writes data.yaml at the dataset root, right
+    # next to images/ and labels/. The recorded `path:` is whatever was passed
+    # to --out (often relative to the *generation* CWD), which Ultralytics then
+    # mis-joins (e.g. .../data/synthetic/data/synthetic/images/val). The only
+    # always-correct base is the yaml's own directory, so use that and ignore
+    # the recorded value.
+    cfg["path"] = str(data_path.parent)
 
     resolved = data_path.with_suffix(".resolved.yaml")
     resolved.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
