@@ -2,18 +2,19 @@
 
 Living snapshot of where the project is. Update this after each unit of work.
 
-_Last updated: 2026-06-04 — Phase 0 complete._
+_Last updated: 2026-06-04 — Phase 1 complete._
 
 ## Current phase
 
-**Phase 0 — Repo setup → DONE.** Next up: Phase 1 (synthetic data generator).
+**Phase 1 — Synthetic data generator → DONE.** Next up: Phase 2 (train the
+compact single-class detector on Kaggle/Colab).
 
 ## Phase status
 
 | Phase | What | Status |
 |---|---|---|
 | 0 | Repo setup (structure, license, README contract) | ✅ Done |
-| 1 | Synthetic data generator (DE-plate compositing + augmentation, image + bbox labels) | ⬜ Not started |
+| 1 | Synthetic data generator (DE-plate compositing + augmentation, image + bbox labels) | ✅ Done |
 | 2 | Train compact single-class detector | ⬜ Not started |
 | 3 | Evaluation (recall-focused; skewed/dirty/occluded/shadow) | ⬜ Not started |
 | 4 | TFLite export + quantisation | ⬜ Not started |
@@ -32,6 +33,37 @@ _Last updated: 2026-06-04 — Phase 0 complete._
 - Smoke test passed in a fresh `python3.12` venv: `pip install -e .` clean,
   `import plate_redactor` works (numpy 2.4.6, cv2 4.13.0, PIL 12.2.0).
 
+## Done in Phase 1
+
+- `plate_redactor.generator` package: `plate.py` (DE-plate RGBA renderer),
+  `backgrounds.py` (disk pool + synthetic portrait/landscape fallback),
+  `compositor.py` (geometry-augment + scale + paste, records normalised bbox),
+  `augment.py` (`AugmentConfig`: perspective/rotation, brightness/contrast,
+  shadow, blur, dirt, occlusion ≤40 %, scale 2–30 %; each toggled + seeded),
+  `writer.py` (YOLO labels + `images|labels/train|val` layout + `data.yaml`),
+  `generate.py` (CLI + `run()` API, tqdm progress), `fonts.py` (font resolution).
+- CLI: `python -m plate_redactor.generator.generate --n … --seed … --backgrounds
+  … --out …` (also console-script `plate-redactor-generate`). Reproducible via
+  per-image `default_rng([seed, i])`.
+- Smoke test `tests/test_generator.py` (4 tests, ~2 s): files exist, YOLO valid,
+  coords in [0,1], reproducibility, disabled-augmentation path.
+- Visual spot-check (20 samples): plates legible, augmentations realistic, boxes
+  align tightly incl. rotated case; portrait + landscape both covered; plate area
+  0.02–0.29.
+- Deps: added `tqdm`; bumped Pillow to `>=10.1` (`load_default(size=)`). Added
+  `NOTICE` (font-licensing rationale — no font binary committed).
+
+### Decisions made in Phase 1
+
+- **Label format: YOLO** (`0 cx cy w h`, normalised, class always 0) +
+  `data.yaml` descriptor. Compositor records top-left `[x,y,w,h]` (matching the
+  README §2 contract); writer converts to YOLO centre form.
+- **Package path:** generator lives at `src/plate_redactor/generator/` (project
+  `src`-layout), so CLI is `python -m plate_redactor.generator.generate` — the
+  issue's literal `generator.generate` adapted to the package per CLAUDE.md.
+- **Font:** none bundled (licence-clean stance); runtime resolution with a
+  Pillow-default fallback. FE-Schrift is opt-in via `--font` / `assets/fonts/`.
+
 ## Open decisions (still TBD)
 
 See README → "Open decisions". Outstanding: final repo name, detector
@@ -41,9 +73,12 @@ size & latency, synthetic-vs-real fine-tuning share.
 
 ## Notes for the next session
 
-- Phase 1 = synthetic generator: composite artificial DE plates onto vehicle
-  backgrounds; augment (angle/perspective, lighting/shadow, blur, dirt, partial
-  occlusion, scale); write images **and** bounding-box labels in the training
-  format. No real plate photos in the repo.
-- Decide the bbox label format in Phase 1 and document it (the README output
-  contract uses normalised `[x, y, w, h]`).
+- Phase 2 = train a compact single-class detector. Generate a real dataset first
+  (`python -m plate_redactor.generator.generate --n <N> --seed 42 --backgrounds
+  <dir>`) with downloaded freely-licensed backgrounds; data is YOLO-format with
+  `data.yaml`, so a YOLO-family model (e.g. a small YOLO) trains directly on it.
+- Train on Kaggle/Colab; don't commit checkpoints (release assets / external).
+- For authentic plates during dataset generation, drop a licensed FE-Schrift into
+  `src/plate_redactor/generator/assets/fonts/` or pass `--font` (see `NOTICE`).
+- Still TBD and relevant soon: detector architecture (Ph2) and input resolution
+  (320 vs 416) — pick when wiring up training.
