@@ -1,0 +1,44 @@
+# --- Project artefacts (never commit) ---
+# Synthetic images & labels, real plate photos
+/data/*
+!/data/.gitkeep
+# Checkpoints, exported .tflite, weights, logs
+/models/*
+!/models/.gitkeep
+*.tflite
+*.ckpt
+*.pt
+*.pth
+*.h5
+*.onnx
+*.weights
+
+# Real plate photos — never commit, regardless of location
+**/real_plates/
+**/real/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
