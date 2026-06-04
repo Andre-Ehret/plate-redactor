@@ -2,12 +2,15 @@
 
 Living snapshot of where the project is. Update this after each unit of work.
 
-_Last updated: 2026-06-04 — Phase 1 complete._
+_Last updated: 2026-06-04 — Phase 2 scaffolding complete (training not yet run on GPU)._
 
 ## Current phase
 
-**Phase 1 — Synthetic data generator → DONE.** Next up: Phase 2 (train the
-compact single-class detector on Kaggle/Colab).
+**Phase 2 — Train detector → scripts + notebook ready; GPU run pending.** The
+training pipeline is written and locally validated (argument parsing, notebook
+JSON, byte-compile). The actual ~100-epoch train must run on Kaggle/Colab GPU to
+produce `models/best.pt`; record which platform produced the released checkpoint
+here once done. Next up after that: Phase 3 (recall-focused evaluation).
 
 ## Phase status
 
@@ -15,7 +18,7 @@ compact single-class detector on Kaggle/Colab).
 |---|---|---|
 | 0 | Repo setup (structure, license, README contract) | ✅ Done |
 | 1 | Synthetic data generator (DE-plate compositing + augmentation, image + bbox labels) | ✅ Done |
-| 2 | Train compact single-class detector | ⬜ Not started |
+| 2 | Train compact single-class detector | 🟡 Scaffolded (GPU run pending) |
 | 3 | Evaluation (recall-focused; skewed/dirty/occluded/shadow) | ⬜ Not started |
 | 4 | TFLite export + quantisation | ⬜ Not started |
 | 5 | Integration contract test | ⬜ Not started |
@@ -64,21 +67,58 @@ compact single-class detector on Kaggle/Colab).
 - **Font:** none bundled (licence-clean stance); runtime resolution with a
   Pillow-default fallback. FE-Schrift is opt-in via `--font` / `assets/fonts/`.
 
+## Done in Phase 2 (scaffolding)
+
+- `src/training/train.py` — YOLOv8n trainer wrapping `ultralytics`. CLI flags:
+  `--data --epochs(100) --imgsz(320) --batch(16) --project(models/runs) --name
+  --seed --weights --device --patience(50) --save-period(10) --out --conf(0.25)
+  --iou(0.45)`. Lazy ultralytics import (so `--help` works without it), resolves
+  the data.yaml `path:` to absolute (avoids Ultralytics' `~/datasets` trap),
+  copies best checkpoint to `models/best.pt`, then prints a recall-biased val
+  pass (recall/precision/mAP).
+- `src/training/sanity_check.py` — CPU inference on N random val images; prints
+  detection counts + scores + boxes, saves annotated images to
+  `models/sanity_output/`.
+- `src/training/README.md` — architecture rationale + hyperparameter table.
+- `notebooks/train.ipynb` — self-contained Kaggle/Colab notebook (installs deps,
+  clones repo, regenerates or attaches dataset, trains, inspects curves,
+  persists `best.pt` to Kaggle output / Drive). Includes the Kaggle↔Colab
+  rotation guidance (§4).
+- `pyproject.toml` — added `[train]` extra (`ultralytics>=8.1`); kept out of base
+  install (pulls torch). `.gitignore` — added `.ipynb_checkpoints/`.
+- Local validation: both scripts byte-compile and `--help` cleanly; notebook is
+  valid JSON. **Not yet run on GPU** — `models/best.pt`, recall ≥ 0.80, and the
+  loss-curve / sanity-check DoD items require a Kaggle/Colab run.
+
+### Decisions made in Phase 2
+
+- **Architecture: YOLOv8n** (Ultralytics, Apache-2.0) — small footprint, native
+  TFLite export with NMS baked in (eases Phase 4), trains on free P100/T4.
+- **Input resolution: 320** as the working choice (matches the smaller §2
+  contract candidate); compare 416 in Phase 3 if small-plate recall lags.
+- README "Open decisions" updated for both.
+
 ## Open decisions (still TBD)
 
-See README → "Open decisions". Outstanding: final repo name, detector
-architecture (Ph2), input resolution 320 vs 416, quantisation int8 vs fp16 (Ph4),
-NMS in-model vs post-processing (Ph4), recall threshold/metric (Ph3), target file
-size & latency, synthetic-vs-real fine-tuning share.
+See README → "Open decisions". Resolved in Ph2: detector architecture (YOLOv8n)
+and input resolution (320, provisional). Outstanding: final repo name,
+quantisation int8 vs fp16 (Ph4), NMS in-model vs post-processing (Ph4), recall
+threshold/metric (Ph3), target file size & latency, synthetic-vs-real fine-tuning
+share.
 
 ## Notes for the next session
 
-- Phase 2 = train a compact single-class detector. Generate a real dataset first
-  (`python -m plate_redactor.generator.generate --n <N> --seed 42 --backgrounds
-  <dir>`) with downloaded freely-licensed backgrounds; data is YOLO-format with
-  `data.yaml`, so a YOLO-family model (e.g. a small YOLO) trains directly on it.
-- Train on Kaggle/Colab; don't commit checkpoints (release assets / external).
+- **Run the actual Phase 2 training on GPU.** Open `notebooks/train.ipynb` on
+  Kaggle (P100) or Colab (T4). First generate a real dataset with downloaded
+  freely-licensed backgrounds (`--backgrounds <dir>`) for a usable detector — the
+  synthetic-fallback backgrounds are only for smoke runs. Then run `train.py`
+  (defaults: YOLOv8n, imgsz 320, 100 epochs, batch 16).
+- After the run: confirm val **recall ≥ 0.80**, inspect `models/runs/<name>/
+  results.png` for plateau/divergence, run `sanity_check.py` (≥ 4/5 images), and
+  **record which platform produced the checkpoint** above. Ship `best.pt` as a
+  release asset — never commit it.
+- Local smoke option before burning GPU time: `pip install -e ".[train]"`,
+  generate ~50 images, `python src/training/train.py --epochs 2 --batch 4` to
+  exercise the full path on CPU.
 - For authentic plates during dataset generation, drop a licensed FE-Schrift into
   `src/plate_redactor/generator/assets/fonts/` or pass `--font` (see `NOTICE`).
-- Still TBD and relevant soon: detector architecture (Ph2) and input resolution
-  (320 vs 416) — pick when wiring up training.
