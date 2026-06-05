@@ -37,6 +37,14 @@ eval = [
     "ultralytics>=8.1",
     "matplotlib>=3.5",
 ]
+# Phase 4 — TFLite export. ultralytics drives the export; tensorflow provides the
+# TFLite runtime + converter (and the raw interpreter the verify/benchmark scripts
+# use — the same surface as the app's react-native-fast-tflite). Install with:
+# pip install -e ".[export]"
+export = [
+    "ultralytics>=8.1",
+    "tensorflow>=2.13",
+]
 
 [project.scripts]
 plate-redactor-generate = "plate_redactor.generator.generate:main"

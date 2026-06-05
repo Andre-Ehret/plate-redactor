@@ -11,10 +11,11 @@ This is a **detector, not OCR** — for redaction only *where* a plate is matter
 not *what it says*. Detection is also more robust on skewed, dirty or partly
 occluded plates where OCR fails, and the plate text is never read or stored.
 
-**Status: Phase 1 (synthetic data generator).** Nothing is trained yet, but the
-generator that produces the training data is in place — see
-[Synthetic data generator](#synthetic-data-generator) below. This repo defines
-the project structure, the interface contract, and the data pipeline.
+**Status: Phase 4 (TFLite export + quantisation).** The generator (Phase 1),
+training (Phase 2) and recall-focused evaluation (Phase 3) are in place; Phase 4
+adds the `.tflite` export, quantisation and contract-verification tooling — see
+[Build phases](#build-phases). The headline checkpoint and exported model ship as
+release assets (never committed). See `WORKING_STATE.md` for the live snapshot.
 
 ---
 
@@ -51,15 +52,27 @@ A list of detections, each:
 ```
 
 - `x, y` = top-left corner; `w, h` = width/height. All normalised `0–1`.
-- **NMS (non-max suppression): TBD** — to be decided whether it runs *inside*
-  the model graph or in app-side post-processing. This README will state the
-  final choice explicitly once Phase 4 (export) fixes it. Until then, assume
-  post-processing NMS may be required.
+- **NMS (non-max suppression):** the Phase-4 export **bakes NMS into the model
+  graph** by default (`export.py --nms`), so the app consumes ready-made
+  detections without its own suppression step. `verify_output.py` inspects the
+  *actual* exported signature and records the authoritative note in
+  `models/export_report.md`; if a build ships raw predictions instead
+  (`--no-nms`), post-processing NMS is required and the report says so.
 
 ### Quantisation
 
-- **int8 or fp16 — TBD** (see [Open decisions](#open-decisions)). Goal: small
-  file size + fast single-image CPU inference. Marked TBD until Phase 4.
+- **fp16** (primary). fp16 halves the model size with negligible
+  detection-accuracy loss and needs no calibration data, which suits a
+  recall-biased detector. **int8** is the documented fallback (representative
+  calibration set required) — used only if fp16 exceeds the size target or drops
+  recall > 2 pp vs. the fp32 baseline. Decided in Phase 4; see
+  [Open decisions](#open-decisions).
+
+### Size & latency targets
+
+- **File size ≤ 8 MB** (comfortable bundled app asset).
+- **CPU inference p95 ≤ 500 ms** on a single captured still (not live frames).
+  Benchmarked on dev hardware in Phase 4; confirmed on-device in Phase 5.
 
 ### Evaluation bias — Recall over Precision
 
@@ -105,10 +118,10 @@ the noted phase.
 | Final repo / model name | **TBD** |
 | Detector architecture (compact single-class) | **YOLOv8n** (Ultralytics, Apache-2.0) — Phase 2 |
 | Input resolution — `320` vs `416` | **320** (working choice, Phase 2; revisit 416 in Phase 3 if recall lags) |
-| Quantisation — `int8` vs `fp16` | **TBD** (Phase 4) |
-| NMS location — in-model vs post-processing | **TBD** (Phase 4) |
+| Quantisation — `int8` vs `fp16` | **fp16** (primary; int8 fallback if fp16 misses size/recall targets) — Phase 4 |
+| NMS location — in-model vs post-processing | **In-model** (baked at export via `--nms`; confirmed per-build by `verify_output.py`) — Phase 4 |
 | Recall threshold / acceptance metric | **Overall recall ≥ 0.90** @ IoU-match 0.5, operating conf 0.25 (hard gate; also portrait & landscape ≥ 0.90). Per-subset recall ≥ 0.85 soft; precision ≥ 0.60 informational — Phase 3 |
-| Target file size & inference latency | **TBD** |
+| Target file size & inference latency | **≤ 8 MB**, **CPU p95 ≤ 500 ms** on a single still — Phase 4 |
 | Share of synthetic vs (consenting) real data for fine-tuning | **TBD** |
 
 ---
@@ -135,9 +148,16 @@ src/eval/           # Phase 3 — recall-focused evaluation
   generate_test_set.py  # build the hard-case test set (data/test_hard/)
   evaluate.py       #   results table + eval_results.json + failures + report
   threshold_sweep.py    # conf sweep -> threshold_sweep.png + recommended conf
+src/export/         # Phase 4 — TFLite export + quantisation
+  export.py         #   best.pt -> plate-detector.tflite (fp16/int8) + versioned artefact
+  verify_output.py  #   raw-interpreter I/O check vs §2 + NMS location + export_report.md
+  benchmark.py      #   CPU latency (mean/median/p95) -> benchmark_results.json
+  tflite_io.py      #   runtime-agnostic interpreter + dtype-aware pre/post (shared)
+  README.md         #   export workflow + quantisation/NMS notes
 notebooks/          # Kaggle/Colab notebooks
   train.ipynb       #   Phase 2 — training
   evaluate.ipynb    #   Phase 3 — evaluation
+  export.ipynb      #   Phase 4 — export
 data/               # gitignored — synthetic images & labels, backgrounds
 models/             # gitignored — checkpoints, .tflite artefacts
 tests/              # generator smoke test (Phase 1); contract tests (Phase 5)
@@ -276,8 +296,21 @@ One phase per work order; test briefly after each.
 
   Hard gate: overall (and portrait/landscape) recall **≥ 0.90**. See
   `notebooks/evaluate.ipynb` for a one-click Kaggle/Colab run.
-- **Phase 4 — TFLite export + quantisation**: export, quantise, check file size
-  and single-image inference time.
+- **Phase 4 — TFLite export + quantisation**: export `best.pt` to a quantised
+  `.tflite` (fp16, NMS in-graph), verify the §2 I/O signature, benchmark CPU
+  latency, and re-check recall against the exported model:
+
+  ```bash
+  pip install -e ".[export]"
+  python src/export/export.py                       # -> models/plate-detector.tflite
+  python src/export/verify_output.py                # I/O + NMS -> export_report.md
+  python src/export/benchmark.py                    # CPU latency p95
+  python src/eval/evaluate.py --model models/plate-detector.tflite --data data/test_hard
+  ```
+
+  Targets: file size **≤ 8 MB**, CPU **p95 ≤ 500 ms**, recall still **≥ 0.90**.
+  See `notebooks/export.ipynb` for a one-click Kaggle/Colab run and
+  `src/export/README.md` for details.
 - **Phase 5 — Integration contract test**: run sample stills through the
   exported model and verify the output format matches this contract.
 

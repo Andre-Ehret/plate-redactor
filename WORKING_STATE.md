@@ -2,20 +2,27 @@
 
 Living snapshot of where the project is. Update this after each unit of work.
 
-_Last updated: 2026-06-05 — Phase 3 evaluation scaffolding complete (scripts +
-test-set generator + notebook + metric unit tests); awaiting a GPU/checkpoint run
-to record the real recall numbers._
+_Last updated: 2026-06-05 — Phase 4 export scaffolding complete (export / verify /
+benchmark scripts + shared TFLite-runtime helper + notebook + doc/contract
+updates); awaiting a GPU/checkpoint run to produce the real `.tflite`, sizes,
+latency and recall-after-quantisation numbers._
 
 ## Current phase
 
-**Phase 3 — Evaluation → SCAFFOLDING DONE; run pending.** Hard-case test-set
-generator, the evaluation + threshold-sweep scripts, the torch-free metrics
-module (13 unit tests), and `notebooks/evaluate.ipynb` are in place and exercised
-locally — generator runs end-to-end; evaluate/sweep verified with stubbed
-inference (table, `eval_results.json`, annotated failures, report, gates and the
-sweep plot all produced). **Next:** run `notebooks/evaluate.ipynb` where
-`models/best.pt` lives (Kaggle/Colab) to get the real recall and either clear the
-≥ 0.90 hard gate (→ Phase 4) or open a retrain issue for the failing subset.
+**Phase 4 — TFLite export + quantisation → SCAFFOLDING DONE; run pending.** The
+export script (`export.py`, fp16 primary + int8 fallback, NMS baked in by default,
+versioned artefact), the raw-interpreter signature/NMS verifier (`verify_output.py`,
+auto-drafts `export_report.md`), the CPU latency benchmark (`benchmark.py`), the
+shared runtime-agnostic helper (`tflite_io.py`) and `notebooks/export.ipynb` are
+in place; all four scripts compile and their `--help`/argparse paths work. The
+recall regression reuses `src/eval/evaluate.py` unchanged (Ultralytics loads the
+`.tflite` through its TFLite runtime → apples-to-apples with the Phase-3 fp32
+run). **Next:** run `notebooks/export.ipynb` where `models/best.pt` lives
+(Kaggle/Colab) to produce `plate-detector-v0.1.0.tflite`, then record real file
+size (≤ 8 MB), CPU p95 (≤ 500 ms), recall-after-quantisation (≥ 0.90) and the
+confirmed NMS location here and in `models/export_report.md`. **Gate caveat:** the
+Phase-3 ≥ 0.90 recall gate has not yet been cleared on a real run (Phase 3 was
+also scaffolding) — clear it before treating the export as final.
 
 > **Caveat — synthetic val is saturated.** Val recall/precision came out at
 > 1.00 / 1.00 (mAP@0.5 0.995). That's a red flag, not a victory: the synthetic
@@ -33,7 +40,7 @@ sweep plot all produced). **Next:** run `notebooks/evaluate.ipynb` where
 | 1 | Synthetic data generator (DE-plate compositing + augmentation, image + bbox labels) | ✅ Done |
 | 2 | Train compact single-class detector | ✅ Done (Kaggle T4; recall 1.00 on synthetic val — see caveat) |
 | 3 | Evaluation (recall-focused; skewed/dirty/occluded/shadow) | 🟡 Scaffolding done; GPU/checkpoint run pending |
-| 4 | TFLite export + quantisation | ⬜ Not started |
+| 4 | TFLite export + quantisation | 🟡 Scaffolding done; GPU/checkpoint run pending |
 | 5 | Integration contract test | ⬜ Not started |
 
 ## Done in Phase 0
@@ -164,16 +171,78 @@ sweep plot all produced). **Next:** run `notebooks/evaluate.ipynb` where
   operating-point table and the sweep (no per-threshold re-inference); mAP@0.5 is
   threshold-independent (uses all detections).
 
+## Done in Phase 4 (scaffolding)
+
+- `src/export/export.py` — Ultralytics TFLite export. CLI: `--model --imgsz(320)
+  --quantisation(fp16|int8) --data --out --version(0.1.0) --nms/--no-nms --meta`.
+  fp16 by default (`half=True`); int8 calibrates on `data.yaml`. Tries in-graph
+  NMS (`nms=True`), auto-falls back to a raw export if the installed Ultralytics
+  rejects it (loud warning). Copies to `models/plate-detector.tflite` **and**
+  `plate-detector-v0.1.0.tflite` (release artefact), prints size vs the 8 MB
+  target, writes `models/export_meta.json` (fp32-vs-exported sizes + settings).
+- `src/export/tflite_io.py` — runtime-agnostic interpreter loader (tries
+  `tflite-runtime` → `ai-edge-litert` → `tensorflow.lite`) + dtype-aware
+  pre/post-processing (handles fp16 float I/O and int8 quantised I/O). Torch/
+  ultralytics-free: this is the same raw surface the app's react-native-fast-tflite
+  uses. Imported as a sibling module (like `eval/common.py`).
+- `src/export/verify_output.py` — loads the `.tflite` raw, prints input (shape/
+  dtype/range `[0,1]`) and output tensors, classifies **NMS location** (in-model
+  vs post-processing) from the output signature, best-effort parses to
+  `[{box:[x,y,w,h], score}]` and checks coords ∈ `[0,1]`, then auto-drafts
+  `models/export_report.md` (folds in `export_meta.json` + `benchmark_results.json`
+  + `eval_results.json` when present).
+- `src/export/benchmark.py` — times `invoke()` only over N (default 20) random val
+  images on **CPU** (warm-up discarded), reports mean/median/**p95** vs the 500 ms
+  target, writes `models/benchmark_results.json`.
+- `notebooks/export.ipynb` — one-click Kaggle/Colab run (install → clone → fetch
+  `best.pt` → export → verify → benchmark → recall regression → report → save
+  artefact). `src/export/README.md` — workflow + quantisation/NMS notes.
+- `pyproject.toml` — added `[export]` extra (`ultralytics` + `tensorflow`).
+  `.gitignore` — un-ignore `models/export_report.md` (the only committed Phase-4
+  output; `.tflite`, `export_meta.json`, `benchmark_results.json` stay ignored).
+  README §2 contract + "Open decisions" updated (fp16, in-model NMS, ≤ 8 MB /
+  p95 ≤ 500 ms).
+- **Recall regression reuses `evaluate.py` as-is** — `python src/eval/evaluate.py
+  --model models/plate-detector.tflite` works because Ultralytics loads a `.tflite`
+  through its TFLite runtime, giving the same pre/post-processing as the fp32 run.
+  No change to the eval code was needed.
+
+### Decisions made in Phase 4
+
+- **Quantisation: fp16** (was TBD) — halves size, no calibration, negligible
+  accuracy loss; int8 is the documented fallback if fp16 misses the 8 MB target or
+  drops recall > 2 pp. Recorded in README "Open decisions".
+- **NMS location: in-model** (was TBD) — baked into the graph at export (`--nms`)
+  so the app needs no suppression step; `verify_output.py` confirms the actual
+  per-build signature and the report records it. Recorded in README "Open decisions".
+- **Size/latency targets** (were TBD): file ≤ 8 MB, CPU p95 ≤ 500 ms on a single
+  still. Recorded in README "Open decisions".
+
 ## Open decisions (still TBD)
 
 See README → "Open decisions". Resolved: detector architecture (YOLOv8n, Ph2),
 input resolution (320, provisional, Ph2), recall threshold/acceptance metric
-(overall recall ≥ 0.90, Ph3). Outstanding: final repo name, quantisation int8 vs
-fp16 (Ph4), NMS in-model vs post-processing (Ph4), target file size & latency,
-synthetic-vs-real fine-tuning share.
+(overall recall ≥ 0.90, Ph3), quantisation (fp16, Ph4), NMS location (in-model,
+Ph4), target file size & latency (≤ 8 MB / p95 ≤ 500 ms, Ph4). Outstanding: final
+repo name, synthetic-vs-real fine-tuning share.
 
 ## Notes for the next session
 
+- **Run the actual Phase 4 export** (after the Phase-3 recall gate is cleared on a
+  real run). Open `notebooks/export.ipynb` where `models/best.pt` lives
+  (Kaggle/Colab): it exports fp16, verifies the I/O + NMS, benchmarks CPU latency,
+  and re-runs `evaluate.py` against the `.tflite`. **Record here and in
+  `models/export_report.md`:** exported file size (≤ 8 MB), CPU p95 (≤ 500 ms),
+  recall-after-quantisation (≥ 0.90, and the delta vs the fp32 baseline — must not
+  drop > 2 pp), and the **confirmed NMS location** (verify_output prints it). If
+  fp16 misses size or recall, re-export `--quantisation int8 --data
+  data/synthetic/data.yaml` and document the int8 deltas. Upload
+  `plate-detector-v0.1.0.tflite` as a GitHub Release asset (never commit it);
+  commit only `models/export_report.md`.
+- Local dry-run without a GPU/checkpoint: the scripts compile and `--help` works
+  bare; full export needs `pip install -e ".[export]"` and `models/best.pt`.
+  `verify_output.py` / `benchmark.py` only need a `.tflite` + a TFLite runtime, so
+  you can smoke them against any exported model.
 - **Run the actual Phase 3 evaluation.** Open `notebooks/evaluate.ipynb` on the
   platform where `models/best.pt` lives (Kaggle/Colab). It generates
   `data/test_hard/` (seed 999), runs `evaluate.py` + `threshold_sweep.py`, and
