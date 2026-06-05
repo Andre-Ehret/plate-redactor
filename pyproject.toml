@@ -31,6 +31,12 @@ dev = [
 train = [
     "ultralytics>=8.1",
 ]
+# Phase 3 — evaluation. Needs the model (ultralytics) plus matplotlib for the
+# threshold-sweep plot. Install with: pip install -e ".[eval]"
+eval = [
+    "ultralytics>=8.1",
+    "matplotlib>=3.5",
+]
 
 [project.scripts]
 plate-redactor-generate = "plate_redactor.generator.generate:main"

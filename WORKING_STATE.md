@@ -2,13 +2,20 @@
 
 Living snapshot of where the project is. Update this after each unit of work.
 
-_Last updated: 2026-06-04 — Phase 2 complete (trained checkpoint produced on Kaggle T4)._
+_Last updated: 2026-06-05 — Phase 3 evaluation scaffolding complete (scripts +
+test-set generator + notebook + metric unit tests); awaiting a GPU/checkpoint run
+to record the real recall numbers._
 
 ## Current phase
 
-**Phase 2 — Train detector → DONE.** YOLOv8n trained 100 epochs on the synthetic
-dataset; `models/best.pt` (6.2 MB) produced. DoD met. **Next up: Phase 3**
-(recall-focused evaluation against real photos — see the caveat below).
+**Phase 3 — Evaluation → SCAFFOLDING DONE; run pending.** Hard-case test-set
+generator, the evaluation + threshold-sweep scripts, the torch-free metrics
+module (13 unit tests), and `notebooks/evaluate.ipynb` are in place and exercised
+locally — generator runs end-to-end; evaluate/sweep verified with stubbed
+inference (table, `eval_results.json`, annotated failures, report, gates and the
+sweep plot all produced). **Next:** run `notebooks/evaluate.ipynb` where
+`models/best.pt` lives (Kaggle/Colab) to get the real recall and either clear the
+≥ 0.90 hard gate (→ Phase 4) or open a retrain issue for the failing subset.
 
 > **Caveat — synthetic val is saturated.** Val recall/precision came out at
 > 1.00 / 1.00 (mAP@0.5 0.995). That's a red flag, not a victory: the synthetic
@@ -25,7 +32,7 @@ dataset; `models/best.pt` (6.2 MB) produced. DoD met. **Next up: Phase 3**
 | 0 | Repo setup (structure, license, README contract) | ✅ Done |
 | 1 | Synthetic data generator (DE-plate compositing + augmentation, image + bbox labels) | ✅ Done |
 | 2 | Train compact single-class detector | ✅ Done (Kaggle T4; recall 1.00 on synthetic val — see caveat) |
-| 3 | Evaluation (recall-focused; skewed/dirty/occluded/shadow) | ⬜ Not started |
+| 3 | Evaluation (recall-focused; skewed/dirty/occluded/shadow) | 🟡 Scaffolding done; GPU/checkpoint run pending |
 | 4 | TFLite export + quantisation | ⬜ Not started |
 | 5 | Integration contract test | ⬜ Not started |
 
@@ -113,15 +120,76 @@ dataset; `models/best.pt` (6.2 MB) produced. DoD met. **Next up: Phase 3**
   contract candidate); compare 416 in Phase 3 if small-plate recall lags.
 - README "Open decisions" updated for both.
 
+## Done in Phase 3 (scaffolding)
+
+- `src/eval/metrics.py` — framework-free detection metrics: IoU, YOLO→xyxy,
+  greedy score-ordered matching, precision/recall/F1, all-points AP@0.5. No
+  torch/ultralytics, so it is fast to unit-test (the gate logic lives here).
+- `src/eval/common.py` — subset constants (`HARD_SUBSETS` = tilt/dirty/occluded/
+  shadow/small/mixed → the 600-image OVERALL gate; `ORIENT_SUBSETS` =
+  portrait/landscape), dataset iteration + GT loading, lazy-ultralytics model
+  loading + single low-conf inference pass, and `aggregate_at_conf()` (re-applies
+  the operating conf in Python so one inference pass feeds both the table and the
+  sweep).
+- `src/eval/generate_test_set.py` — builds `data/test_hard/` (gitignored): six
+  hard subsets (100 each, augmentation **forced** at prob 1.0 per subset) + 50
+  portrait / 50 landscape with orientation-forced backgrounds. Seed 999 (never a
+  training seed). Reuses the Phase-1 generator building blocks.
+- `src/eval/evaluate.py` — per-subset + overall + orientation table, hard gates
+  (overall/portrait/landscape recall ≥ 0.90), `models/eval_results.json`,
+  annotated false-negative images (`models/eval_failures/`, GT red / pred green),
+  and an auto-drafted `models/eval_report.md` (heuristic FN categorisation).
+  `--strict` exits non-zero on a failed gate.
+- `src/eval/threshold_sweep.py` — conf 0.05→0.50, plots recall/precision/F1,
+  recommends the highest-recall conf with precision ≥ 0.60, saves
+  `models/threshold_sweep.png` and merges the recommended conf + curve into
+  `eval_results.json`.
+- `notebooks/evaluate.ipynb` — one-click Kaggle/Colab run (install → clone →
+  attach `best.pt` → generate test set → evaluate → sweep → inspect).
+- `tests/test_eval_metrics.py` — 13 unit tests for metrics + aggregation (IoU,
+  greedy matching incl. the missed-plate FN case, PRF, AP edge cases, conf
+  thresholding). Full suite: **17 passed**.
+- `pyproject.toml` — added `[eval]` extra (`ultralytics` + `matplotlib`).
+  `.gitignore` — un-ignore `models/eval_report.md` (the only committed eval
+  output). Small backward-compatible generator change: `AugmentConfig.
+  occlusion_min_frac` (default 0.10) so the `occluded` subset can force 20–40 %.
+
+### Decisions made in Phase 3
+
+- **Acceptance metric / recall threshold** (was TBD): overall recall **≥ 0.90**
+  at IoU-match 0.5, operating conf 0.25; portrait & landscape recall ≥ 0.90 are
+  also hard gates; per-subset recall ≥ 0.85 is soft (documented if missed);
+  precision ≥ 0.60 is informational. Recorded in README "Open decisions".
+- **Single low-conf inference pass + Python re-thresholding** for both the
+  operating-point table and the sweep (no per-threshold re-inference); mAP@0.5 is
+  threshold-independent (uses all detections).
+
 ## Open decisions (still TBD)
 
-See README → "Open decisions". Resolved in Ph2: detector architecture (YOLOv8n)
-and input resolution (320, provisional). Outstanding: final repo name,
-quantisation int8 vs fp16 (Ph4), NMS in-model vs post-processing (Ph4), recall
-threshold/metric (Ph3), target file size & latency, synthetic-vs-real fine-tuning
-share.
+See README → "Open decisions". Resolved: detector architecture (YOLOv8n, Ph2),
+input resolution (320, provisional, Ph2), recall threshold/acceptance metric
+(overall recall ≥ 0.90, Ph3). Outstanding: final repo name, quantisation int8 vs
+fp16 (Ph4), NMS in-model vs post-processing (Ph4), target file size & latency,
+synthetic-vs-real fine-tuning share.
 
 ## Notes for the next session
+
+- **Run the actual Phase 3 evaluation.** Open `notebooks/evaluate.ipynb` on the
+  platform where `models/best.pt` lives (Kaggle/Colab). It generates
+  `data/test_hard/` (seed 999), runs `evaluate.py` + `threshold_sweep.py`, and
+  shows the table, plot and failure images. Record the real recall here and the
+  recommended operating conf. **If overall (or portrait/landscape) recall < 0.90,
+  open a retrain issue** with targeted augmentation for the failing subset before
+  Phase 4 — and remember the released checkpoint trained on *fallback* (solid)
+  backgrounds, so a gap is expected. For a fair test, generate `test_hard` with
+  the same `--backgrounds` source the model was trained on.
+- Commit `models/eval_report.md` (the only un-ignored eval output); everything
+  else under `models/` (json, png, failure images) stays gitignored.
+- Local dry-run without a GPU/checkpoint: `python src/eval/generate_test_set.py
+  --per-subset 5 --per-orientation 2 --out /tmp/th` then `pytest
+  tests/test_eval_metrics.py`. Full inference needs `pip install -e ".[eval]"`.
+
+### Phase 2 notes (kept for reference)
 
 - **Run the actual Phase 2 training on GPU.** Open `notebooks/train.ipynb` on
   Kaggle (P100) or Colab (T4). First generate a real dataset with downloaded

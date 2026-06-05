@@ -107,7 +107,7 @@ the noted phase.
 | Input resolution — `320` vs `416` | **320** (working choice, Phase 2; revisit 416 in Phase 3 if recall lags) |
 | Quantisation — `int8` vs `fp16` | **TBD** (Phase 4) |
 | NMS location — in-model vs post-processing | **TBD** (Phase 4) |
-| Recall threshold / acceptance metric | **TBD** (Phase 3) |
+| Recall threshold / acceptance metric | **Overall recall ≥ 0.90** @ IoU-match 0.5, operating conf 0.25 (hard gate; also portrait & landscape ≥ 0.90). Per-subset recall ≥ 0.85 soft; precision ≥ 0.60 informational — Phase 3 |
 | Target file size & inference latency | **TBD** |
 | Share of synthetic vs (consenting) real data for fine-tuning | **TBD** |
 
@@ -129,8 +129,15 @@ src/training/       # Phase 2 — train / sanity-check the detector
   train.py          #   train YOLOv8n -> models/best.pt
   sanity_check.py   #   CPU inference on a few val images
   README.md         #   architecture decision + hyperparameter notes
-notebooks/          # Phase 2 — Kaggle/Colab training notebook
-  train.ipynb
+src/eval/           # Phase 3 — recall-focused evaluation
+  metrics.py        #   IoU / matching / precision-recall / AP (torch-free)
+  common.py         #   subsets, dataset iteration, inference, aggregation
+  generate_test_set.py  # build the hard-case test set (data/test_hard/)
+  evaluate.py       #   results table + eval_results.json + failures + report
+  threshold_sweep.py    # conf sweep -> threshold_sweep.png + recommended conf
+notebooks/          # Kaggle/Colab notebooks
+  train.ipynb       #   Phase 2 — training
+  evaluate.ipynb    #   Phase 3 — evaluation
 data/               # gitignored — synthetic images & labels, backgrounds
 models/             # gitignored — checkpoints, .tflite artefacts
 tests/              # generator smoke test (Phase 1); contract tests (Phase 5)
@@ -252,12 +259,23 @@ One phase per work order; test briefly after each.
 
 - **Phase 0 — Repo setup**: structure, Apache-2.0 license, README with the
   interface contract.
-- **Phase 1 — Synthetic data generator** *(this phase)*: DE-plate compositing +
+- **Phase 1 — Synthetic data generator**: DE-plate compositing +
   augmentation; writes images **and** bounding-box labels. See
   [Synthetic data generator](#synthetic-data-generator).
-- **Phase 2 — Train the detector**: compact single-class architecture.
-- **Phase 3 — Evaluation**: recall-focused; skewed / dirty / occluded / shadow
-  test cases; over-redaction preferred.
+- **Phase 2 — Train the detector**: compact single-class architecture (YOLOv8n).
+- **Phase 3 — Evaluation**: recall-focused; a dedicated hard-case test set
+  (tilt / dirt / occlusion / shadow / tiny / mixed + portrait/landscape) with
+  over-redaction preferred. Build it and evaluate with:
+
+  ```bash
+  pip install -e ".[eval]"
+  python src/eval/generate_test_set.py            # -> data/test_hard/
+  python src/eval/evaluate.py --model models/best.pt
+  python src/eval/threshold_sweep.py --model models/best.pt
+  ```
+
+  Hard gate: overall (and portrait/landscape) recall **≥ 0.90**. See
+  `notebooks/evaluate.ipynb` for a one-click Kaggle/Colab run.
 - **Phase 4 — TFLite export + quantisation**: export, quantise, check file size
   and single-image inference time.
 - **Phase 5 — Integration contract test**: run sample stills through the
