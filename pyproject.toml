@@ -56,7 +56,7 @@ contract = [
 plate-redactor-generate = "plate_redactor.generator.generate:main"
 
 [project.urls]
-Homepage = "https://github.com/andrenalin/plate-redactor"
+Homepage = "https://github.com/Andre-Ehret/plate-redactor"
 
 [tool.setuptools.packages.find]
 where = ["src"]

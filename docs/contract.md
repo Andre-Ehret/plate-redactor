@@ -18,7 +18,7 @@ document is the stable surface between the two repos.
 - **Task:** single-class object detection — one class, `plate` (class index `0`).
 - **Download (GitHub Releases):**
   ```
-  https://github.com/andrenalin/plate-redactor/releases/download/v0.1.0/plate-detector-v0.1.0.tflite
+  https://github.com/Andre-Ehret/plate-redactor/releases/download/v0.1.0/plate-detector-v0.1.0.tflite
   ```
   (repo name is still provisional — see README "Open decisions"). The app **pins
   a specific version** (bundled file or release asset). Do not track `latest`.
