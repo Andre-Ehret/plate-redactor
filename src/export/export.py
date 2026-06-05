@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -124,14 +125,25 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[export] imgsz={args.imgsz} quantisation={args.quantisation} "
           f"nms={'in-graph' if args.nms else 'post-processing'}")
 
+    # Ultralytics writes its intermediates (best.onnx, best_saved_model/) next to
+    # the source .pt. On Kaggle the checkpoint lives under a read-only
+    # /kaggle/input mount, so export from a writable copy when the source dir is
+    # not writable.
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if not os.access(src.parent, os.W_OK):
+        work_src = out.parent / src.name
+        if work_src.resolve() != src.resolve():
+            shutil.copy2(src, work_src)
+        print(f"[export] source dir is read-only; exporting from writable copy: {work_src}")
+        src = work_src
+
     model = YOLO(str(src))
     exported, nms_effective = _export(
         model, imgsz=args.imgsz, quant=args.quantisation, data=args.data, nms=args.nms)
     if not exported.is_file():
         sys.exit(f"Export reported success but file is missing: {exported}")
 
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(exported, out)
     versioned = out.parent / f"plate-detector-v{args.version}.tflite"
     shutil.copy2(exported, versioned)
