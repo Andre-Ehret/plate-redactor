@@ -56,6 +56,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _shape(shape) -> list[int]:
+    """Tensor shape as plain ints (runtimes may return numpy int dtypes)."""
+    return [int(d) for d in shape]
+
+
 def _squeeze_dims(shape) -> list[int]:
     return [int(d) for d in shape if int(d) != 1]
 
@@ -155,7 +160,11 @@ def _write_report(path: Path, *, model: str, backend: str, in_det: dict,
     q = (meta or {}).get("quantisation", "fp16")
     fp32 = (meta or {}).get("fp32_size_mb")
     exp = (meta or {}).get("exported_size_mb")
-    in_shape = list(in_det["shape"])
+    if exp is None:  # no export_meta.json — read the actual artefact size
+        mp = Path(model)
+        if mp.is_file():
+            exp = round(mp.stat().st_size / 1e6, 3)
+    in_shape = _shape(in_det["shape"])
     nms_md = ("baked **into the model graph** — the app consumes detections directly"
               if nms_loc == "in-model" else
               "applied in **app-side post-processing** — the model emits raw "
@@ -209,7 +218,7 @@ def _write_report(path: Path, *, model: str, backend: str, in_det: dict,
     for d in out_details:
         sc, zp = d["quantization"]
         qnote = f", quant (scale={sc}, zero={zp})" if sc else ""
-        lines.append(f"  - `{d['name']}` shape `{list(d['shape'])}`, "
+        lines.append(f"  - `{d['name']}` shape `{_shape(d['shape'])}`, "
                      f"dtype `{np.dtype(d['dtype']).name}`{qnote}")
     lines += [
         "",
@@ -249,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[verify] model={args.model}  backend={backend}")
     print(f"\n[input]  name={in_det['name']!r}")
-    print(f"         shape={list(in_det['shape'])} dtype={np.dtype(in_det['dtype']).name} "
+    print(f"         shape={_shape(in_det['shape'])} dtype={np.dtype(in_det['dtype']).name} "
           f"quant={in_det['quantization']}")
     print(f"         expected value range: [0, 1] (pixel / 255), imgsz={imgsz}")
 
@@ -260,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"\n[output] {len(out_details)} tensor(s):")
     for d, o in zip(out_details, outputs):
-        print(f"         name={d['name']!r} shape={list(d['shape'])} "
+        print(f"         name={d['name']!r} shape={_shape(d['shape'])} "
               f"dtype={np.dtype(d['dtype']).name} quant={d['quantization']}")
         print(f"           dequantised range: [{float(o.min()):.4f}, {float(o.max()):.4f}]")
 

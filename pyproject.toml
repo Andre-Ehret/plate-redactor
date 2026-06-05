@@ -45,6 +45,12 @@ export = [
     "ultralytics>=8.1",
     "tensorflow>=2.13",
 ]
+# Phase 5 — integration contract test. Only a lightweight TFLite runtime is needed
+# (no ultralytics/torch) — the same raw interpreter surface the app uses. Install
+# with: pip install -e ".[dev,contract]"
+contract = [
+    "ai-edge-litert>=1.0",
+]
 
 [project.scripts]
 plate-redactor-generate = "plate_redactor.generator.generate:main"

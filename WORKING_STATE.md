@@ -2,14 +2,33 @@
 
 Living snapshot of where the project is. Update this after each unit of work.
 
-_Last updated: 2026-06-05 — Phase 4 export scaffolding complete (export / verify /
-benchmark scripts + shared TFLite-runtime helper + notebook + doc/contract
-updates); awaiting a GPU/checkpoint run to produce the real `.tflite`, sizes,
-latency and recall-after-quantisation numbers._
+_Last updated: 2026-06-05 — Phase 5 integration contract test complete: the real
+exported `plate-detector-v0.1.0.tflite` is verified against the §2 contract by an
+8-check pytest suite (CPU only), committed synthetic fixtures, a postprocess
+reference, `docs/contract.md` and `models/export_report.md`. Remaining handoff:
+publish the GitHub Release `v0.1.0` (manual — see below)._
 
 ## Current phase
 
-**Phase 4 — TFLite export + quantisation → SCAFFOLDING DONE; run pending.** The
+**Phase 5 — Integration contract test → DONE (code); Release publish is the
+manual handoff.** Against the actual exported artefact
+(`models/plate-detector-v0.1.0.tflite`, 6.17 MB, fp16): `tests/test_contract.py`
+(8 checks T1–T8, all green on CPU via `ai-edge-litert`) confirms input
+`[1,320,320,3]` float32, output `[1,300,6]` (`[x1,y1,x2,y2,score,cls]`, NMS
+**in-model**), boxes & scores in `[0,1]`, ≥1 detection on portrait + landscape,
+no crash on blank, file ≤ 8 MB. `src/export/postprocess.py` is the canonical
+output parser (xyxy→`[x,y,w,h]`, clamp `[0,1]`) + reference NMS for the `--no-nms`
+fallback. `docs/contract.md` is the app-team snapshot. `verify_output.py`
+produced the authoritative `models/export_report.md` (NMS in-model, conf 0.25).
+**Next (manual):** create GitHub Release `v0.1.0`, upload
+`plate-detector-v0.1.0.tflite` as the asset, link `docs/contract.md`. **Caveat
+carried over:** the released checkpoint trained on synthetic *fallback*
+backgrounds, so recall/latency on a real run are still pending (Phase 3/4 GPU
+runs) — the contract suite proves the *format/contract*, not real-world recall.
+
+### Phase 4 — TFLite export + quantisation → SCAFFOLDING DONE; run pending.
+
+The
 export script (`export.py`, fp16 primary + int8 fallback, NMS baked in by default,
 versioned artefact), the raw-interpreter signature/NMS verifier (`verify_output.py`,
 auto-drafts `export_report.md`), the CPU latency benchmark (`benchmark.py`), the
@@ -40,8 +59,8 @@ also scaffolding) — clear it before treating the export as final.
 | 1 | Synthetic data generator (DE-plate compositing + augmentation, image + bbox labels) | ✅ Done |
 | 2 | Train compact single-class detector | ✅ Done (Kaggle T4; recall 1.00 on synthetic val — see caveat) |
 | 3 | Evaluation (recall-focused; skewed/dirty/occluded/shadow) | 🟡 Scaffolding done; GPU/checkpoint run pending |
-| 4 | TFLite export + quantisation | 🟡 Scaffolding done; GPU/checkpoint run pending |
-| 5 | Integration contract test | ⬜ Not started |
+| 4 | TFLite export + quantisation | 🟡 Scaffolding done; artefact exported (v0.1.0, fp16, 6.17 MB); GPU recall/latency run pending |
+| 5 | Integration contract test | ✅ Done (8/8 contract tests green on real artefact); Release publish = manual handoff |
 
 ## Done in Phase 0
 
@@ -217,6 +236,45 @@ also scaffolding) — clear it before treating the export as final.
   per-build signature and the report records it. Recorded in README "Open decisions".
 - **Size/latency targets** (were TBD): file ≤ 8 MB, CPU p95 ≤ 500 ms on a single
   still. Recorded in README "Open decisions".
+
+## Done in Phase 5
+
+- `tests/test_contract.py` — 8 contract checks (T1–T8) against the real
+  `models/plate-detector-v0.1.0.tflite`, loaded through the raw TFLite runtime
+  (no Ultralytics — the same surface the app's `react-native-fast-tflite` sees).
+  Resolves the model via `$PLATE_DETECTOR_PATH` → `plate-detector.tflite` →
+  `plate-detector-v0.1.0.tflite`; **skips** (not fails) if no model/runtime so a
+  bare checkout's CI stays green. **All green** on `ai-edge-litert` (CPU): T1
+  input `[1,320,320,3]`/float32; T2 zeros+ones don't crash, scores ∈ `[0,1]`;
+  T3 output parses to `[{box,score}]`; T4 boxes ∈ `[0,1]`; T5 scores ∈ `[0,1]`;
+  T6 ≥1 detection on portrait+landscape; T7 blank grey no crash; T8 size ≤ 8 MB.
+- `tests/fixtures/` — 6 committed **synthetic** stills (seed 1234) + companion
+  YOLO `.txt` labels: `landscape_clean`, `portrait_clean`, `tilt`, `occluded`,
+  `dirty`, `shadow` (covers portrait/landscape/occlusion/tilt). Reproducible via
+  `tests/fixtures/generate_fixtures.py` (reuses Phase-1 building blocks + the
+  Phase-3 `subset_config`; fallback backgrounds to match the checkpoint).
+- `src/export/postprocess.py` — canonical output parser the app TS mirrors:
+  `parse_output()` turns the `[1,300,6]` tensor (`[x1,y1,x2,y2,score,cls]`, xyxy
+  normalised) into the §2 `[{box:[x,y,w,h], score}]` form (clamped `[0,1]`).
+  NMS is **in-model**, so a `nms(..., iou_threshold=0.45)` reference is included
+  only for the `--no-nms` fallback build.
+- `docs/contract.md` — app-team integration snapshot pinned to v0.1.0: filename +
+  GitHub Releases download URL, input shape/dtype/`pixel/255`, the real output
+  tensor layout, conf 0.25, in-model NMS note, `redactImage` signature, Apache-2.0
+  + synthetic-only data-provenance paragraph.
+- `models/export_report.md` — generated by `verify_output.py` against the real
+  artefact (authoritative **NMS = in-model**, exported size 6.166 MB ≤ 8 MB).
+  Small `verify_output.py` robustness fixes folded in: coerce tensor shapes to
+  plain ints in the report/stdout, and fall back to the actual `.tflite` file
+  size when `export_meta.json` is absent.
+
+### Phase 5 — still open (manual handoff)
+
+- **GitHub Release `v0.1.0` not yet published** (needs repo push + `gh`/UI): tag
+  `v0.1.0`, upload `plate-detector-v0.1.0.tflite` as the asset, release notes with
+  size 6.17 MB / conf 0.25 / NMS in-model / link to `docs/contract.md`. Recall
+  from a real Phase-3 run is still pending, so quote the contract guarantees, not
+  a real-world recall number, until that run lands.
 
 ## Open decisions (still TBD)
 
