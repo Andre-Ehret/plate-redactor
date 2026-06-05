@@ -153,14 +153,18 @@ src/export/         # Phase 4 — TFLite export + quantisation
   verify_output.py  #   raw-interpreter I/O check vs §2 + NMS location + export_report.md
   benchmark.py      #   CPU latency (mean/median/p95) -> benchmark_results.json
   tflite_io.py      #   runtime-agnostic interpreter + dtype-aware pre/post (shared)
+  postprocess.py    #   Phase 5 — canonical output parse (+ reference NMS)
   README.md         #   export workflow + quantisation/NMS notes
 notebooks/          # Kaggle/Colab notebooks
   train.ipynb       #   Phase 2 — training
   evaluate.ipynb    #   Phase 3 — evaluation
   export.ipynb      #   Phase 4 — export
+docs/
+  contract.md       # Phase 5 — app-team integration snapshot (pinned to v0.1.0)
 data/               # gitignored — synthetic images & labels, backgrounds
-models/             # gitignored — checkpoints, .tflite artefacts
-tests/              # generator smoke test (Phase 1); contract tests (Phase 5)
+models/             # gitignored — checkpoints, .tflite artefacts (export_report.md tracked)
+tests/              # generator smoke (Ph1), eval-metric (Ph3) & contract (Ph5) tests
+  fixtures/         #   committed synthetic stills + YOLO labels (Phase 5)
 README.md
 LICENSE             # Apache 2.0
 NOTICE              # font licensing rationale
@@ -312,7 +316,19 @@ One phase per work order; test briefly after each.
   See `notebooks/export.ipynb` for a one-click Kaggle/Colab run and
   `src/export/README.md` for details.
 - **Phase 5 — Integration contract test**: run sample stills through the
-  exported model and verify the output format matches this contract.
+  exported model and verify the output format matches this contract. The suite
+  loads the real `.tflite` through the raw runtime (no Ultralytics) and checks
+  the §2 I/O signature end-to-end:
+
+  ```bash
+  pip install ai-edge-litert            # or tflite-runtime / tensorflow
+  pytest tests/test_contract.py         # T1–T8, CPU only
+  ```
+
+  Resolves the model via `$PLATE_DETECTOR_PATH` →
+  `models/plate-detector.tflite` → `models/plate-detector-v0.1.0.tflite`. See
+  [`docs/contract.md`](docs/contract.md) for the app-side integration snapshot
+  and `src/export/postprocess.py` for the canonical output parser.
 
 ---
 
