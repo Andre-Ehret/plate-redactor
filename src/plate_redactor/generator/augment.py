@@ -49,6 +49,7 @@ class AugmentConfig:
     max_area_frac: float = 0.30
 
     # appearance
+    occlusion_min_frac: float = 0.10  # min share of the plate that may be hidden
     occlusion_max_frac: float = 0.40  # max share of the plate that may be hidden
 
     @classmethod
@@ -167,12 +168,14 @@ def _dirt(img: np.ndarray, rng: np.random.Generator) -> np.ndarray:
 
 
 def _occlusion(img: np.ndarray, box_px: tuple[int, int, int, int],
-               rng: np.random.Generator, max_frac: float) -> np.ndarray:
-    """Cover <= ``max_frac`` of the plate with a solid random rectangle."""
+               rng: np.random.Generator, max_frac: float,
+               min_frac: float = 0.1) -> np.ndarray:
+    """Cover ``min_frac``..``max_frac`` of the plate with a solid random rectangle."""
     bx, by, bw, bh = box_px
     if bw <= 1 or bh <= 1:
         return img
-    frac = float(rng.uniform(0.1, max_frac))
+    lo = min(min_frac, max_frac)
+    frac = float(rng.uniform(lo, max_frac))
     # pick width fraction, derive height fraction so wf*hf == frac (clamped)
     wf = float(rng.uniform(0.2, 1.0))
     hf = min(1.0, frac / wf)
@@ -207,6 +210,7 @@ def augment_image(image: Image.Image, bbox_norm: list[float],
     if _hit(rng, cfg, cfg.dirt):
         img = _dirt(img, rng)
     if _hit(rng, cfg, cfg.occlusion):
-        img = _occlusion(img, box_px, rng, cfg.occlusion_max_frac)
+        img = _occlusion(img, box_px, rng, cfg.occlusion_max_frac,
+                         cfg.occlusion_min_frac)
 
     return Image.fromarray(img, "RGB")

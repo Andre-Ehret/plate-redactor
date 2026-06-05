@@ -5,6 +5,9 @@
 # Checkpoints, exported .tflite, weights, logs
 /models/*
 !/models/.gitkeep
+# Phase 3 — the human-readable eval report is committed; everything else under
+# models/ (checkpoints, eval_results.json, plots, failure images) stays ignored.
+!/models/eval_report.md
 *.tflite
 *.ckpt
 *.pt
